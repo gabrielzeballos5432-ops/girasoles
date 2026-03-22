@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body{margin:0;overflow:hidden;background:black;}
+
+.titulo{
+  position:absolute;
+  top:40px;
+  width:100%;
+  text-align:center;
+  font-size:42px;
+  color:#ffe066;
+  text-shadow:0 0 20px #ffd84d,0 0 50px #ffcc00,0 0 100px #ffaa00;
+  font-family:sans-serif;
+  z-index:10;
+}
+
+/* 💌 TARJETA */
+#card{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:rgba(0,0,0,0.6);
+  backdrop-filter: blur(10px);
+  opacity:0;
+  pointer-events:none;
+  transition:0.4s;
+  z-index:20;
+}
+
+#card.active{
+  opacity:1;
+  pointer-events:auto;
+}
+
+#cardContent{
+  padding:40px 60px;
+  border-radius:25px;
+  font-size:28px;
+  color:white;
+  text-align:center;
+
+  background: radial-gradient(circle,#ffd84d,#ff8800);
+  box-shadow:
+    0 0 30px #ffcc33,
+    0 0 80px #ffaa00;
+
+  transform:scale(0.8);
+  transition:0.4s;
+}
+
+#card.active #cardContent{
+  transform:scale(1);
+}
+#startScreen{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:radial-gradient(circle,#000000,#050505);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  z-index:30;
+  transition:1s;
+}
+
+#startScreen.hidden{
+  opacity:0;
+  pointer-events:none;
+}
+
+.startText{
+  color:#ffd84d;
+  font-size:34px;
+  text-align:center;
+  text-shadow:0 0 20px #ffd84d,0 0 60px #ffaa00;
+  animation:pulse 2s infinite;
+}
+
+@keyframes pulse{
+  0%{transform:scale(1);}
+  50%{transform:scale(1.1);}
+  100%{transform:scale(1);}
+}
+</style>
+</head>
+
+<body>
+
+<div class="titulo">Feliz día de las<br>Flores Amarillas 🌻</div>
+<div id="startScreen">
+  <div class="startText">
+    🌻<br><br>
+    Haz clic para ver algo bonito 💛
+  </div>
+</div>
+<div id="card">
+  <div id="cardContent"></div>
+</div>
+
+<script type="module">
+const startScreen = document.getElementById("startScreen");
+
+window.addEventListener("click", ()=>{
+  startScreen.classList.add("hidden");
+}, { once:true });
+
+import * as THREE from 'https://esm.sh/three@0.152.2';
+import { OrbitControls } from 'https://esm.sh/three@0.152.2/examples/jsm/controls/OrbitControls.js';
+import { EffectComposer } from 'https://esm.sh/three@0.152.2/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'https://esm.sh/three@0.152.2/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'https://esm.sh/three@0.152.2/examples/jsm/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+
+/* 🎥 CAMARA */
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 5000);
+camera.position.set(0,250,700);
+
+/* 🎬 RENDER */
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+/* 🎬 BLOOM */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  1.5, 0.4, 0.85
+);
+composer.addPass(bloom);
+
+/* CONTROLES */
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+/* 🌌 INCLINACIÓN */
+scene.rotation.x = 0.4;
+
+/* 🪐 NÚCLEO */
+const coreRadius = 60;
+
+const core = new THREE.Mesh(
+  new THREE.SphereGeometry(coreRadius,32,32),
+  new THREE.MeshBasicMaterial({color:0x000000})
+);
+scene.add(core);
+
+/* ✨ ESTRELLAS INTERNAS */
+const geo = new THREE.BufferGeometry();
+let pts=[];
+
+for(let i=0;i<500;i++){
+  let r = coreRadius * Math.cbrt(Math.random());
+  let theta = Math.random()*Math.PI*2;
+  let phi = Math.acos(2*Math.random()-1);
+
+  pts.push(
+    r*Math.sin(phi)*Math.cos(theta),
+    r*Math.sin(phi)*Math.sin(theta),
+    r*Math.cos(phi)
+  );
+}
+
+geo.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
+
+scene.add(new THREE.Points(
+  geo,
+  new THREE.PointsMaterial({color:0xffffff,size:1.2})
+));
+
+/* 💫 ANILLO SHADER */
+const ringGeo = new THREE.RingGeometry(coreRadius+5, coreRadius+70, 256);
+
+const ringMat = new THREE.ShaderMaterial({
+  transparent:true,
+  side:THREE.DoubleSide,
+  depthWrite:false,
+  blending:THREE.AdditiveBlending,
+  uniforms:{ time:{value:0} },
+  vertexShader:`varying vec2 vUv;
+  void main(){vUv=uv;
+  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`varying vec2 vUv;
+  uniform float time;
+  void main(){
+    float d=length(vUv-0.5)*2.0;
+    vec3 c=mix(vec3(1.0),vec3(1.0,0.8,0.2),smoothstep(0.4,1.0,d));
+    float glow=sin(d*20.0-time*3.0)*0.1;
+    float a=1.0-d+glow;
+    gl_FragColor=vec4(c,a);
+  }`
+});
+
+const ring = new THREE.Mesh(ringGeo, ringMat);
+ring.rotation.x = Math.PI/2;
+scene.add(ring);
+
+/* ✨ LUCES */
+scene.add(new THREE.PointLight(0xffdd55,2,1500));
+scene.add(new THREE.AmbientLight(0xffffff,0.2));
+
+/* 🌌 FONDO */
+const bgGeo = new THREE.BufferGeometry();
+let bg=[];
+for(let i=0;i<8000;i++){
+  bg.push((Math.random()-0.5)*4000,(Math.random()-0.5)*4000,(Math.random()-0.5)*4000);
+}
+bgGeo.setAttribute('position', new THREE.Float32BufferAttribute(bg,3));
+
+scene.add(new THREE.Points(bgGeo,new THREE.PointsMaterial({color:0xffffff,size:1.5})));
+
+/* 🌻 TEXTURAS */
+const loader = new THREE.TextureLoader();
+
+const textures = [
+  loader.load("8034258.png"),
+  loader.load("ef9bd0e6f6f0b12e0735846300ae1d0d-ilustracion-de-girasol.webp"),
+  loader.load("a-bouquet-of-sunflowers-on-transparent-free-png.webp"),
+  loader.load("Bouquet-De-GirasolesU.png"),
+  loader.load("ramo-de-girasoles-1.png")
+];
+
+const safeZone = coreRadius + 100;
+
+let flowers=[];
+
+for(let i=0;i<200;i++){
+
+  let tex = textures[Math.floor(Math.random()*textures.length)];
+
+  let sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map:tex,
+      transparent:true,
+      depthWrite:false
+    })
+  );
+
+  let r;
+  do{
+    r = Math.pow(Math.random(),0.7)*1500;
+  }while(r < safeZone);
+
+  let a=Math.random()*Math.PI*2;
+
+  sprite.position.set(
+    Math.cos(a)*r,
+    (Math.random()-0.5)*150,
+    Math.sin(a)*r
+  );
+
+  let s = 40 + Math.random()*60;
+  sprite.scale.set(s,s,1);
+
+  scene.add(sprite);
+  flowers.push(sprite);
+}
+
+/* 💬 FRASES FLOTANTES */
+function createText(text,color){
+    let canvas = document.createElement("canvas");
+    let ctx = canvas.getContext("2d");
+
+    canvas.width = 800;
+    canvas.height = 200;
+
+    ctx.fillStyle = color;
+    ctx.font = "bold 36px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // dividir texto en líneas
+    const maxWidth = canvas.width - 40;
+    const words = text.split(" ");
+    let line = "";
+    let y = canvas.height / 2;
+    const lineHeight = 42;
+
+    for (let i = 0; i < words.length; i++) {
+        let testLine = line + words[i] + " ";
+        let metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && i > 0) {
+            ctx.fillText(line, canvas.width / 2, y);
+            line = words[i] + " ";
+            y += lineHeight;
+        } else {
+            line = testLine;
+        }
+    }
+    ctx.fillText(line, canvas.width / 2, y);
+
+    let tex = new THREE.CanvasTexture(canvas);
+
+    let sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+            map: tex,
+            transparent: true,
+            opacity: 0.65,
+            depthWrite: false
+        })
+    );
+
+    sprite.scale.set(canvas.width / 2, canvas.height / 2, 1);
+    return sprite;
+}
+
+const frasesTexto=[
+"Contigo todo se siente diferente ✨",
+"Me haces sonreír sin darme cuenta 🌻",
+"Ojalá esto siga creciendo…",
+"No eres mía… pero te pienso mucho",
+"Hay algo en ti que me calma",
+"No sé a dónde vamos… pero quiero seguir",
+];
+
+let frases=[];
+
+for(let i=0;i<40;i++){
+
+  let color = Math.random()>0.5 ? "#ffffff" : "#ffd84d";
+
+  let f=createText(
+    frasesTexto[Math.floor(Math.random()*frasesTexto.length)],
+    color
+  );
+
+  let r;
+  do{
+    r=Math.pow(Math.random(),0.7)*1600;
+  }while(r < safeZone+200);
+
+  let a=Math.random()*Math.PI*2;
+
+  f.position.set(
+    Math.cos(a)*r,
+    (Math.random()-0.5)*200,
+    Math.sin(a)*r
+  );
+
+  scene.add(f);
+  frases.push(f);
+}
+
+/* 💌 FRASES TARJETA */
+const frasesCard=[
+"💛 Me gustas… aunque no lo diga mucho",
+"🌻 A veces solo quiero quedarme contigo",
+"✨ No eres mía… pero te siento cerca",
+"💫 Contigo todo se vuelve más bonito",
+"🌼 Me gusta cómo me haces sentir",
+"🌻 Ojalá esto dure más de lo que imaginamos",
+];
+
+/* 💌 TARJETA */
+const card=document.getElementById("card");
+const cardContent=document.getElementById("cardContent");
+
+function mostrarTarjeta(){
+  let frase=frasesCard[Math.floor(Math.random()*frasesCard.length)];
+  cardContent.innerHTML=frase;
+  card.classList.add("active");
+}
+
+card.addEventListener("click",()=>{
+  card.classList.remove("active");
+});
+
+/* 🎯 CLICK FLORES */
+const raycaster=new THREE.Raycaster();
+const mouse=new THREE.Vector2();
+
+window.addEventListener("click",(e)=>{
+
+  mouse.x=(e.clientX/window.innerWidth)*2-1;
+  mouse.y=-(e.clientY/window.innerHeight)*2+1;
+
+  raycaster.setFromCamera(mouse,camera);
+
+  const hit=raycaster.intersectObjects(flowers);
+
+  if(hit.length>0){
+    mostrarTarjeta();
+  }
+});
+
+/* 🎬 ANIMACIÓN */
+function animate(){
+  requestAnimationFrame(animate);
+
+  ring.material.uniforms.time.value += 0.03;
+
+  flowers.forEach(f=>{
+    f.lookAt(camera.position);
+    f.position.applyAxisAngle(new THREE.Vector3(0,1,0),0.001);
+  });
+
+  frases.forEach(f=>{
+    f.lookAt(camera.position);
+    f.position.applyAxisAngle(new THREE.Vector3(0,1,0),0.0008);
+  });
+
+  controls.update();
+  composer.render();
+}
+
+animate();
+
+/* RESPONSIVE */
+window.addEventListener("resize",()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+</script>
+
+</body>
+</html>
